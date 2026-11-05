@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stammbaum-Trainer</title>
+<style>
+/* Layout: Kopfzeile → Bedienleiste → zweispaltig (Stammbaum-Blatt | Aufgabe & Rückmeldung), auf dem Handy gestapelt */
+:root{
+  --paper:#F2F5F4; --surface:#FFFFFF; --ink:#15233B; --muted:#56666E; --line:#C9D3D4;
+  --accent:#0E7C86; --accent-soft:#DDEFF0; --ok:#2C7A4B; --ok-soft:#E1F2E7; --bad:#B23A30; --bad-soft:#F8E4E1;
+  --evidence:#C98200; --evidence-soft:#FBEFD6;
+  --f-display:"Segoe UI", system-ui, sans-serif;
+  --f-body:"Segoe UI", system-ui, sans-serif;
+  --f-mono:ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#0E151D; --surface:#15202B; --ink:#E4ECEE; --muted:#97A8AE; --line:#2B3A47;
+  --accent:#4BC0C9; --accent-soft:#12363C; --ok:#6CCB8F; --ok-soft:#163223; --bad:#F08A80; --bad-soft:#3A1E1C;
+  --evidence:#F2B341; --evidence-soft:#3A2D10; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --paper:#0E151D; --surface:#15202B; --ink:#E4ECEE; --muted:#97A8AE; --line:#2B3A47;
+  --accent:#4BC0C9; --accent-soft:#12363C; --ok:#6CCB8F; --ok-soft:#163223; --bad:#F08A80; --bad-soft:#3A1E1C;
+  --evidence:#F2B341; --evidence-soft:#3A2D10; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:20px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);font-weight:700}
+h1{font-family:var(--f-display);font-weight:750;font-size:clamp(28px,4.4vw,42px);line-height:1.05;margin:4px 0 6px;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:62ch}
+.score{display:flex;gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:96px}
+.stat b{display:block;font-family:var(--f-display);font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+
+.bar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;border-block:1px solid var(--line);padding-block:12px}
+.group{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.group > .lab{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-right:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--ink);font:600 14px var(--f-body);padding:7px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;font:600 13px var(--f-body);padding:5px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 14px 10px;min-width:0}
+.sheet-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.sheet-head h2{font-family:var(--f-display);font-size:18px;margin:0}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);align-items:center}
+.legend svg{vertical-align:middle;margin-right:4px}
+.tree{overflow-x:auto}
+.tree svg{display:block;width:100%;height:auto;min-width:440px}
+svg .ln{stroke:var(--ink);stroke-width:1.6;fill:none}
+svg .sym{stroke:var(--ink);stroke-width:1.8}
+svg .sym.u{fill:var(--surface)} svg .sym.a{fill:var(--ink)}
+svg .num{fill:var(--muted);font:600 12px var(--f-body);text-anchor:middle}
+svg .num.t{fill:var(--accent);font-weight:700}
+svg .gen{fill:var(--muted);font:700 14px var(--f-display);text-anchor:middle}
+svg .geno{fill:var(--ink);font:500 10.5px var(--f-mono);text-anchor:middle}
+svg .ring{fill:none;stroke:var(--evidence);stroke-width:3.2}
+svg .tring{fill:none;stroke:var(--accent);stroke-width:2.4;stroke-dasharray:4 3}
+.note{font-size:13px;color:var(--muted);margin:6px 2px 0}
+
+.panel{display:grid;gap:14px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h3{font-family:var(--f-display);font-size:18px;margin:0 0 4px}
+.card p{margin:0 0 10px}
+.q{font-weight:600}
+.rows{display:grid;gap:8px;margin:10px 0 14px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.row .nm{font-weight:600}
+.row .nm small{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
+.row.ok{border-color:var(--ok);background:var(--ok-soft)}
+.row.bad{border-color:var(--bad);background:var(--bad-soft)}
+.pick{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.pick button{border:0;background:transparent;color:var(--ink);font:600 13px var(--f-body);padding:6px 10px;cursor:pointer}
+.pick button + button{border-left:1px solid var(--line)}
+.pick button[aria-pressed="true"].yes{background:var(--ok);color:var(--surface)}
+.pick button[aria-pressed="true"].no{background:var(--bad);color:var(--surface)}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:0;border-radius:10px;font:700 15px var(--f-body);padding:10px 16px;cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--surface)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.gt{font-family:var(--f-mono);font-size:14px}
+.gt sup{font-size:.72em}
+.target{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px}
+.target.ok{border-color:var(--ok);background:var(--ok-soft)} .target.bad{border-color:var(--bad);background:var(--bad-soft)}
+.target .who{font-weight:700} .target .who span{font-weight:400;color:var(--muted)}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.why{font-size:14px}
+.fb{display:grid;gap:8px}
+.fbitem{font-size:14.5px;padding:8px 10px;border-radius:8px;background:var(--paper)}
+.fbitem b{display:block}
+.show{border:0;background:none;color:var(--accent);font:700 13px var(--f-body);padding:2px 0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.verdict{font-family:var(--f-display);font-size:17px;padding:10px 12px;border-radius:10px;background:var(--evidence-soft);border-left:4px solid var(--evidence)}
+.given{display:inline-block;background:var(--accent-soft);border-radius:8px;padding:4px 10px;font-weight:700}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+summary{cursor:pointer;font-family:var(--f-display);font-weight:600;font-size:17px}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 22px;margin-top:10px}
+.rules h4{margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent)}
+.rules ul{margin:0;padding-left:18px;font-size:14.5px}
+.rules li{margin-bottom:4px}
+.tag{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-left:4px}
+.tag.must{background:var(--bad-soft);color:var(--bad)} .tag.hint{background:var(--evidence-soft);color:var(--ink)}
+@media (prefers-reduced-motion:no-preference){ .row,.target{transition:background .2s,border-color .2s} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Biologie SII · Humangenetik</div>
+      <h1>Stammbaum-Trainer</h1>
+      <p class="lede">Jeder Stammbaum wird neu erzeugt. Wie in Klausur und Abitur: erst den Erbgang im Ausschlussverfahren bestimmen, dann im selben Stammbaum die Genotypen – mit Rückmeldung und markierten Schlüsselstellen.</p>
+    </div>
+    <div class="score" aria-live="polite">
+      <div class="stat"><b id="sRight">0/0</b><span>richtig</span></div>
+      <div class="stat"><b id="sStreak">0</b><span>Serie</span></div>
+    </div>
+  </header>
+
+  <div class="bar">
+    <div class="group">
+      <span class="lab">Aufgabe</span>
+      <div class="seg" role="group" aria-label="Aufgabentyp">
+        <button id="tabFull" aria-pressed="true">Komplettanalyse</button>
+        <button id="tabMode" aria-pressed="false">Nur Erbgang</button>
+        <button id="tabGeno" aria-pressed="false">Nur Genotypen</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="lab">Generationen</span>
+      <div class="seg" role="group" aria-label="Anzahl Generationen">
+        <button id="g3" aria-pressed="true">3</button>
+        <button id="g4" aria-pressed="false">4</button>
+      </div>
+    </div>
+    <div class="group" id="modeChips">
+      <span class="lab">Erbgänge</span>
+      <button class="chip" data-m="AD" aria-pressed="true">aut.-dom.</button>
+      <button class="chip" data-m="AR" aria-pressed="true">aut.-rez.</button>
+      <button class="chip" data-m="XD" aria-pressed="true">X-dom.</button>
+      <button class="chip" data-m="XR" aria-pressed="true">X-rez.</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <section class="sheet" aria-label="Stammbaum">
+      <div class="sheet-head">
+        <h2 id="sheetTitle">Familie 1</h2>
+        <div class="legend">
+          <span><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" class="sym u" style="stroke:var(--ink);fill:var(--surface)"/></svg>Mann</span>
+          <span><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" style="stroke:var(--ink);fill:var(--surface);stroke-width:1.5"/></svg>Frau</span>
+          <span><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" style="stroke:var(--ink);fill:var(--ink)"/></svg>Merkmalsträger</span>
+        </div>
+      </div>
+      <div class="tree" id="tree"></div>
+      <p class="note">Eingeheiratete Personen (ohne Eltern im Stammbaum) können Anlageträger sein, sofern nichts anderes angegeben ist.</p>
+    </section>
+
+    <section class="panel">
+      <div class="card" id="taskCard"></div>
+      <div class="card" id="fbCard" hidden></div>
+    </section>
+  </div>
+
+  <details>
+    <summary>Merkhilfe: Schlüsselstellen im Stammbaum</summary>
+    <div class="rules">
+      <div><h4>Dominant oder rezessiv?</h4><ul>
+        <li>Zwei gesunde Eltern, krankes Kind → <b>rezessiv</b> <span class="tag must">beweist</span></li>
+        <li>Zwei kranke Eltern, gesundes Kind → <b>dominant</b> <span class="tag must">beweist</span></li>
+        <li>Merkmal überspringt Generationen <span class="tag hint">Hinweis</span> auf rezessiv</li></ul></div>
+      <div><h4>X-chromosomal ausschließen</h4><ul>
+        <li>X-dominant: kranker Vater mit gesunder Tochter, oder gesunde Mutter mit krankem Sohn <span class="tag must">schließt aus</span></li>
+        <li>X-rezessiv: kranke Tochter mit gesundem Vater, oder kranke Mutter mit gesundem Sohn <span class="tag must">schließt aus</span></li></ul></div>
+      <div><h4>Hinweise ohne Beweiskraft</h4><ul>
+        <li>Deutlich mehr kranke Männer → X-rezessiv wahrscheinlich</li>
+        <li>Alle Töchter eines kranken Vaters krank, alle Söhne gesund → X-dominant wahrscheinlich</li>
+        <li>Ein Erbgang ist erst sicher, wenn alle anderen ausgeschlossen sind.</li></ul></div>
+    </div>
+  </details>
+</div>
+
+<script>
+/* ===== Genetik-Kern ===== */
+const MODES={AD:{name:"autosomal-dominant",x:false,dom:true},AR:{name:"autosomal-rezessiv",x:false,dom:false},
+             XD:{name:"X-chromosomal-dominant",x:true,dom:true},XR:{name:"X-chromosomal-rezessiv",x:true,dom:false}};
+const ORDER=["AD","AR","XD","XR"];
+const rnd=n=>Math.floor(Math.random()*n), chance=p=>Math.random()<p, pick=a=>a[rnd(a.length)];
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};
+// c = Anzahl Krankheitsallele
+const maxC=(m,sex)=>(MODES[m].x&&sex==="m")?1:2;
+function aff(m,sex,c){const d=MODES[m]; if(d.dom) return c>=1; if(d.x&&sex==="m") return c===1; return c===2;}
+const gam=c=>c===0?[0]:c===2?[1]:[0,1];
+function childOk(m,sex,cf,cm,cc){
+  if(!MODES[m].x){for(const a of gam(cf))for(const b of gam(cm))if(a+b===cc)return true;return false;}
+  if(sex==="m") return gam(cm).includes(cc);
+  return gam(cm).some(b=>cf+b===cc);
+}
+
+function buildTree(nGen){
+  const P=[];let id=0;
+  const mk=(sex,gen,blood,father,mother)=>{const p={id:id++,sex,gen,blood,father,mother,spouse:null,kids:[]};P.push(p);return p;};
+  const f=mk("m",0,true,null,null), m=mk("f",0,false,null,null); f.spouse=m.id; m.spouse=f.id;
+  function fam(fa,mo,gen){
+    const last=gen===nGen-1;
+    const n=gen===1?2+rnd(3):2+rnd(2);
+    const kids=[];
+    for(let i=0;i<n;i++){const k=mk(chance(.5)?"m":"f",gen,true,fa.id,mo.id);kids.push(k);fa.kids.push(k.id);mo.kids.push(k.id);}
+    if(!last){
+      const cnt=gen===1?(nGen===3?1+rnd(2):(chance(.5)?2:1)):1;
+      for(const k of shuffle(kids).slice(0,cnt)){
+        const s=mk(k.sex==="m"?"f":"m",gen,false,null,null); k.spouse=s.id; s.spouse=k.id;
+        k.sex==="m"?fam(k,s,gen+1):fam(s,k,gen+1);
+      }
+    }
+  }
+  fam(f,m,1);
+  return P;
+}
+function simulate(P,m){
+  const d=MODES[m]; const seed=rnd(2);
+  for(const p of P){
+    let c=0;
+    if(p.father===null){
+      const isOrig=p.id<=1;
+      if(isOrig&&p.id===seed){
+        if(d.dom) c=1; else if(d.x&&p.sex==="m") c=1; else c=d.x?(chance(.75)?1:2):(chance(.5)?2:1);
+      }else if(d.dom) c=chance(.12)?1:0;
+      else if(d.x) c=p.sex==="m"?(chance(.1)?1:0):(chance(.22)?1:0);
+      else c=chance(.33)?1:0;
+    }else{
+      const cf=P[p.father].c, cm=P[p.mother].c;
+      if(!d.x) c=pick(gam(cf))+pick(gam(cm));
+      else c=p.sex==="m"?pick(gam(cm)):cf+pick(gam(cm));
+    }
+    p.c=c; p.aff=aff(m,p.sex,c);
+  }
+}
+/* Mögliche Genotypen je Person (Stammbaum ohne Schleifen → Kantenkonsistenz ist exakt) */
+function domains(P,m){
+  const D=P.map(p=>{const s=[];for(let c=0;c<=maxC(m,p.sex);c++)if(aff(m,p.sex,c)===p.aff)s.push(c);return s;});
+  const trios=P.filter(p=>p.father!==null).map(p=>[p.father,p.mother,p.id]);
+  let changed=true;
+  while(changed){changed=false;
+    for(const [f,mo,ch] of trios){
+      const sex=P[ch].sex;
+      const nf=D[f].filter(a=>D[mo].some(b=>D[ch].some(c=>childOk(m,sex,a,b,c))));
+      const nm=D[mo].filter(b=>D[f].some(a=>D[ch].some(c=>childOk(m,sex,a,b,c))));
+      const nc=D[ch].filter(c=>D[f].some(a=>D[mo].some(b=>childOk(m,sex,a,b,c))));
+      if(nf.length!==D[f].length||nm.length!==D[mo].length||nc.length!==D[ch].length){changed=true;D[f]=nf;D[mo]=nm;D[ch]=nc;}
+    }
+  }
+  return D;
+}
+const consistent=(P,m)=>domains(P,m).every(s=>s.length>0);
+
+function exclusionReason(P,m){
+  const d=MODES[m];
+  for(const ch of P){ if(ch.father===null) continue;
+    const f=P[ch.father], mo=P[ch.mother], L=lab;
+    if(d.dom&&!f.aff&&!mo.aff&&ch.aff) return {ids:[f.id,mo.id,ch.id],text:`${L(f)} und ${L(mo)} sind gesund, ihr Kind ${L(ch)} ist krank. Bei dominantem Erbgang müsste mindestens ein Elternteil das dominante Allel tragen und damit selbst krank sein.`};
+    if(!d.dom&&f.aff&&mo.aff&&!ch.aff) return {ids:[f.id,mo.id,ch.id],text:`${L(f)} und ${L(mo)} sind beide krank, ihr Kind ${L(ch)} ist gesund. Bei rezessivem Erbgang sind kranke Eltern homozygot und können nur das rezessive Allel weitergeben.`};
+  }
+  for(const ch of P){ if(ch.father===null) continue;
+    const f=P[ch.father], mo=P[ch.mother], L=lab;
+    if(m==="XD"&&f.aff&&ch.sex==="f"&&!ch.aff) return {ids:[f.id,ch.id],text:`Der kranke Vater ${L(f)} hat eine gesunde Tochter ${L(ch)}. Ein Vater gibt sein einziges X (mit dem dominanten Allel) an jede Tochter weiter.`};
+    if(m==="XD"&&!mo.aff&&ch.sex==="m"&&ch.aff) return {ids:[mo.id,ch.id],text:`Der kranke Sohn ${L(ch)} hat eine gesunde Mutter ${L(mo)}. Söhne erhalten ihr X von der Mutter; eine gesunde Mutter (XᵃXᵃ) kann kein dominantes Allel weitergeben.`};
+    if(m==="XR"&&ch.sex==="f"&&ch.aff&&!f.aff) return {ids:[f.id,ch.id],text:`Die kranke Tochter ${L(ch)} hat einen gesunden Vater ${L(f)}. Sie braucht zwei Xᵃ, eines davon vom Vater – er müsste dann selbst krank sein.`};
+    if(m==="XR"&&mo.aff&&ch.sex==="m"&&!ch.aff) return {ids:[mo.id,ch.id],text:`Die kranke Mutter ${L(mo)} (XᵃXᵃ) hat einen gesunden Sohn ${L(ch)}. Jeder Sohn erhält eines ihrer beiden Xᵃ und müsste krank sein.`};
+  }
+  return {ids:[],text:"Es lässt sich keine widerspruchsfreie Zuordnung von Genotypen finden."};
+}
+
+/* Notation */
+function gtHTML(m,sex,c){
+  const d=MODES[m]; const dis=c, A="A",a="a";
+  if(!d.x){const n=d.dom?dis:2-dis; return n===2?"AA":n===1?"Aa":"aa";}
+  const up=k=>`X<sup>${k}</sup>`;
+  if(sex==="m"){const big=d.dom?dis===1:dis===0; return up(big?A:a)+"Y";}
+  const n=d.dom?dis:2-dis; return n===2?up(A)+up(A):n===1?up(A)+up(a):up(a)+up(a);
+}
+function gtTxt(m,sex,c){return gtHTML(m,sex,c).replace(/<sup>A<\/sup>/g,"ᴬ").replace(/<sup>a<\/sup>/g,"ᵃ");}
+function optionOrder(m,sex){const d=MODES[m]; if(d.x&&sex==="m") return d.dom?[1,0]:[0,1]; return d.dom?[2,1,0]:[0,1,2];}
+
+/* ===== Layout & Zeichnung ===== */
+const SLOT=66,ROW=104,R=15,PADL=46,PADT=28;
+const ROMAN=["I","II","III","IV","V"];
+let P=[],labels={};
+const lab=p=>labels[p.id];
+function layout(P){
+  const W={};
+  const w=id=>{if(W[id]!=null)return W[id];const p=P[id];const own=p.spouse!=null?2:1;const k=p.kids.reduce((s,x)=>s+w(x),0);return W[id]=Math.max(own,k);};
+  function place(id,x0){
+    const p=P[id],Wd=w(id); const att=[];
+    if(p.kids.length){const kw=p.kids.reduce((s,x)=>s+w(x),0);let cx=x0+(Wd-kw)/2;for(const k of p.kids){place(k,cx);att.push(P[k].x);cx+=w(k);}}
+    if(p.spouse!=null){
+      let c=p.kids.length?(att[0]+att[att.length-1])/2:x0+Wd/2;
+      c=Math.min(Math.max(c,x0+1),x0+Wd-1);
+      p.x=c-.5; P[p.spouse].x=c+.5; p.mid=c; P[p.spouse].mid=c; p.att=att;
+    }else p.x=x0+Wd/2;
+  }
+  place(0,0);
+  labels={};
+  const gens=Math.max(...P.map(p=>p.gen))+1;
+  for(let g=0;g<gens;g++){P.filter(p=>p.gen===g).sort((a,b)=>a.x-b.x).forEach((p,i)=>labels[p.id]=`${ROMAN[g]}-${i+1}`);}
+  return {width:w(0),gens};
+}
+function draw(opts={}){
+  const {width,gens}=layout(P);
+  const X=x=>PADL+x*SLOT, Y=g=>PADT+g*ROW;
+  const extra=opts.geno?30:0;
+  const vw=PADL+width*SLOT+10, vh=PADT+(gens-1)*ROW+R+30+extra;
+  let s=`<svg viewBox="0 0 ${vw} ${vh}" role="img" aria-label="Stammbaum mit ${P.length} Personen">`;
+  for(let g=0;g<gens;g++) s+=`<text class="gen" x="16" y="${Y(g)+5}">${ROMAN[g]}</text>`;
+  for(const p of P){
+    if(p.blood&&p.spouse!=null){
+      const sp=P[p.spouse], y=Y(p.gen);
+      const x1=Math.min(X(p.x),X(sp.x))+R, x2=Math.max(X(p.x),X(sp.x))-R;
+      s+=`<line class="ln" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"/>`;
+      if(p.kids.length){
+        const mx=X(p.mid), yb=y+ROW/2, xs=p.kids.map(k=>X(P[k].x));
+        s+=`<line class="ln" x1="${mx}" y1="${y}" x2="${mx}" y2="${yb}"/>`;
+        s+=`<line class="ln" x1="${Math.min(mx,...xs)}" y1="${yb}" x2="${Math.max(mx,...xs)}" y2="${yb}"/>`;
+        for(const x of xs) s+=`<line class="ln" x1="${x}" y1="${yb}" x2="${x}" y2="${Y(p.gen+1)-R}"/>`;
+      }
+    }
+  }
+  const hl=new Set(opts.highlight||[]), tg=new Set(opts.targets||[]);
+  for(const p of P){
+    const x=X(p.x), y=Y(p.gen), cls=`sym ${p.aff?"a":"u"}`;
+    if(hl.has(p.id)) s+= p.sex==="m"?`<rect class="ring" x="${x-R-6}" y="${y-R-6}" width="${2*R+12}" height="${2*R+12}" rx="4"/>`:`<circle class="ring" cx="${x}" cy="${y}" r="${R+6}"/>`;
+    if(tg.has(p.id)) s+= p.sex==="m"?`<rect class="tring" x="${x-R-6}" y="${y-R-6}" width="${2*R+12}" height="${2*R+12}" rx="4"/>`:`<circle class="tring" cx="${x}" cy="${y}" r="${R+6}"/>`;
+    s+= p.sex==="m"?`<rect class="${cls}" x="${x-R}" y="${y-R}" width="${2*R}" height="${2*R}"/>`:`<circle class="${cls}" cx="${x}" cy="${y}" r="${R}"/>`;
+    s+=`<text class="num${tg.has(p.id)?" t":""}" x="${x}" y="${y+R+16}">${labels[p.id].split("-")[1]}</text>`;
+    if(opts.geno){const dm=opts.geno.D[p.id]; dm.forEach((c,i)=>{s+=`<text class="geno" x="${x}" y="${y+R+30+i*12}">${gtTxt(opts.geno.m,p.sex,c)}</text>`;});}
+  }
+  s+="</svg>";
+  document.getElementById("tree").innerHTML=s;
+}
+
+/* ===== Zustand ===== */
+const st={task:"full",gens:3,modes:new Set(ORDER),fam:0,right:0,total:0,streak:0,answered:false};
+try{const sv=JSON.parse(localStorage.getItem("sbt-score")||"null");if(sv){st.right=sv.right|0;st.total=sv.total|0;st.streak=sv.streak|0;}}catch(e){}
+function saveScore(){try{localStorage.setItem("sbt-score",JSON.stringify({right:st.right,total:st.total,streak:st.streak}));}catch(e){}}
+function updScore(){document.getElementById("sRight").textContent=`${st.right}/${st.total}`;document.getElementById("sStreak").textContent=st.streak;}
+function score(ok){st.total++;if(ok){st.right++;st.streak++;}else st.streak=0;saveScore();updScore();}
+
+let cur={}; // aktuelle Aufgabe
+const maxWidth=()=>st.gens===3?9:10;
+
+function newModeTask(full){
+  const pool=[...st.modes];
+  let best=null;
+  for(let t=0;t<500;t++){
+    const m=pick(pool); const tree=buildTree(st.gens); simulate(tree,m);
+    P=tree; const {width}=layout(P);
+    const naff=P.filter(p=>p.aff).length;
+    if(width>maxWidth()||naff<2||naff>P.length-3) continue;
+    const poss=ORDER.map(k=>consistent(P,k));
+    const nposs=poss.filter(Boolean).length;
+    if(nposs===4) continue;
+    let tg=null;
+    if(full){tg=pickTargets(m); if(!tg) continue;}
+    best={tree,m,tg}; if(chance(.55)||nposs===1) break;
+  }
+  if(!best){const tree=buildTree(st.gens);const m=pick(pool);simulate(tree,m);P=tree;best={tree,m,tg:full?pickTargets(m):null};}
+  P=best.tree; layout(P);
+  cur={type:"mode",full:!!full,gen:best.m,tg:best.tg,ans:{},poss:Object.fromEntries(ORDER.map(k=>[k,consistent(P,k)]))};
+  st.fam++; st.answered=false;
+  draw(); renderModeTask();
+}
+function renderModeTask(){
+  document.getElementById("sheetTitle").textContent=`Familie ${st.fam}`;
+  const c=document.getElementById("taskCard");
+  c.innerHTML=`<h3>${cur.full?"Teil 1 · ":""}Welche Erbgänge sind möglich?</h3>
+  <p>Prüfe jeden Erbgang einzeln: Lässt sich der Stammbaum damit widerspruchsfrei erklären, oder gibt es eine Schlüsselstelle, die ihn ausschließt?</p>
+  <div class="rows">${ORDER.map(k=>`<div class="row" id="row-${k}"><div class="nm">${MODES[k].name}</div>
+   <div class="pick" role="group" aria-label="${MODES[k].name}"><button class="yes" data-k="${k}" data-v="1" aria-pressed="false">möglich</button><button class="no" data-k="${k}" data-v="0" aria-pressed="false">ausgeschlossen</button></div></div>`).join("")}</div>
+  <div class="actions"><button class="btn primary" id="check" disabled>Prüfen</button><button class="btn ghost" id="next">Neuer Stammbaum</button></div>`;
+  c.querySelectorAll(".pick button").forEach(b=>b.onclick=()=>{
+    if(st.answered) return;
+    const k=b.dataset.k; cur.ans[k]=b.dataset.v==="1";
+    c.querySelectorAll(`.pick button[data-k="${k}"]`).forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    document.getElementById("check").disabled=Object.keys(cur.ans).length<4;
+  });
+  document.getElementById("check").onclick=checkMode;
+  document.getElementById("next").onclick=()=>newTask();
+  document.getElementById("fbCard").hidden=true;
+}
+function checkMode(){
+  if(st.answered) return; st.answered=true;
+  let allOk=true; const items=[];
+  for(const k of ORDER){
+    const ok=cur.ans[k]===cur.poss[k]; allOk=allOk&&ok;
+    document.getElementById("row-"+k).classList.add(ok?"ok":"bad");
+    if(!cur.poss[k]){const r=exclusionReason(P,k); items.push({k,ok,ids:r.ids,head:`${MODES[k].name}: ausgeschlossen`,text:r.text});}
+    else items.push({k,ok,ids:[],head:`${MODES[k].name}: möglich`,text:possText(k),geno:true});
+  }
+  score(allOk);
+  const possList=ORDER.filter(k=>cur.poss[k]);
+  const verdict=possList.length===1?`Eindeutig: ${MODES[possList[0]].name}.`:`Nicht eindeutig. Möglich bleiben: ${possList.map(k=>MODES[k].name).join(", ")}.`;
+  const fb=document.getElementById("fbCard");
+  fb.hidden=false;
+  fb.innerHTML=`<h3>${allOk?"Alles richtig.":"Noch nicht ganz."}</h3>
+   <div class="fb"><div class="verdict">${verdict}</div>
+   ${items.map((it,i)=>`<div class="fbitem"><b>${it.ok?"✓":"✗"} ${it.head}</b>${it.text}<br>
+     ${it.ids.length?`<button class="show" data-i="${i}">Schlüsselstelle im Stammbaum zeigen</button>`:`<button class="show" data-g="${it.k}">Mögliche Genotypen einblenden</button>`}</div>`).join("")}
+   <p class="note">Erzeugt wurde diese Familie mit einem ${MODES[cur.gen].name}en Erbgang.${possList.length>1?" Am Stammbaum allein lässt sich das aber nicht beweisen.":""}</p>
+   ${cur.full?`<div class="actions"><button class="btn primary" id="part2">Weiter zu Teil 2: Genotypen</button></div>`:""}</div>`;
+  if(cur.full) document.getElementById("part2").onclick=()=>startPart2(possList.length>1);
+  fb.querySelectorAll(".show").forEach(b=>b.onclick=()=>{
+    if(b.dataset.i!=null) draw({highlight:items[+b.dataset.i].ids});
+    else {const m=b.dataset.g; draw({geno:{m,D:domains(P,m)}});}
+  });
+}
+function possText(k){
+  const d=MODES[k];
+  const males=P.filter(p=>p.aff&&p.sex==="m").length, fem=P.filter(p=>p.aff&&p.sex==="f").length;
+  let t="Allen Personen lassen sich Genotypen ohne Widerspruch zuordnen.";
+  if(!d.dom) t+=" Eingeheiratete Gesunde müssen dafür teils Anlageträger sein.";
+  if(k==="XR"&&males>fem) t+=` Hinweis: ${males} kranke Männer gegenüber ${fem} kranken Frauen sprechen für X-rezessiv.`;
+  if(k==="XD"&&fem>males) t+=` Hinweis: mehr kranke Frauen (${fem}) als Männer (${males}) passen zu X-dominant.`;
+  return t;
+}
+
+/* ===== Genotypen-Aufgabe ===== */
+/* Zielpersonen für die Genotypen-Aufgabe im aktuellen Stammbaum P */
+function pickTargets(m){
+  const D=domains(P,m);
+  const pheno=p=>{let n=0;for(let c=0;c<=maxC(m,p.sex);c++)if(aff(m,p.sex,c)===p.aff)n++;return n;};
+  const inter=P.filter(p=>pheno(p)>1);
+  const amb=shuffle(inter.filter(p=>D[p.id].length>1)), fix=shuffle(inter.filter(p=>D[p.id].length===1));
+  if(fix.length<1||inter.length<3) return null;
+  let tg=[...fix.slice(0,2),...amb.slice(0,1)];
+  if(tg.length<3) tg=[...tg,...shuffle(inter.filter(p=>!tg.includes(p))).slice(0,3-tg.length)];
+  if(MODES[m].x&&chance(.4)){const men=P.filter(p=>p.sex==="m"&&!tg.includes(p)); if(men.length) tg[tg.length-1]=pick(men);}
+  return {m,D,targets:shuffle(tg).map(p=>p.id)};
+}
+function newGenoTask(){
+  const pool=[...st.modes];
+  let res=null;
+  for(let t=0;t<400&&!res;t++){
+    const m=pick(pool); const tree=buildTree(st.gens); simulate(tree,m); P=tree;
+    const {width}=layout(P);
+    const naff=P.filter(p=>p.aff).length;
+    if(width>maxWidth()||naff<2) continue;
+    res=pickTargets(m);
+  }
+  layout(P);
+  cur={type:"geno",...res,sel:{}};
+  st.fam++; st.answered=false;
+  draw({targets:cur.targets}); renderGenoTask();
+}
+function startPart2(ambig){
+  const t=cur.tg, gen=cur.gen;
+  cur={type:"geno",part2:true,ambig,...t,sel:{}};
+  st.answered=false;
+  draw({targets:cur.targets}); renderGenoTask();
+  document.getElementById("taskCard").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function describe(p){return `${p.sex==="m"?"Mann":"Frau"}, ${p.aff?"krank":"gesund"}`;}
+function renderGenoTask(){
+  document.getElementById("sheetTitle").textContent=`Familie ${st.fam}`;
+  const m=cur.m, c=document.getElementById("taskCard");
+  c.innerHTML=`<h3>${cur.part2?"Teil 2 · ":""}Genotypen bestimmen</h3>
+  <p>${cur.ambig?"Der Stammbaum ist nicht eindeutig. Gehe für Teil 2 von diesem Erbgang aus: ":"Erbgang: "}<span class="given">${MODES[m].name}</span></p>
+  <p>Wähle für jede markierte Person <b>alle</b> Genotypen, die in Frage kommen. ${MODES[m].x?"":"Großbuchstabe = dominantes Allel."}</p>
+  <div class="rows">${cur.targets.map(id=>{const p=P[id];return `<div class="target" id="t-${id}"><div class="who">${lab(p)} <span>(${describe(p)})</span></div>
+    <div class="opts">${optionOrder(m,p.sex).map(cc=>`<button class="opt gt" data-id="${id}" data-c="${cc}" aria-pressed="false">${gtHTML(m,p.sex,cc)}</button>`).join("")}</div></div>`;}).join("")}</div>
+  <div class="actions"><button class="btn primary" id="check">Prüfen</button><button class="btn ghost" id="next">Neuer Stammbaum</button></div>`;
+  c.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+    if(st.answered) return;
+    const on=b.getAttribute("aria-pressed")!=="true"; b.setAttribute("aria-pressed",on?"true":"false");
+  });
+  document.getElementById("check").onclick=checkGeno;
+  document.getElementById("next").onclick=()=>newTask();
+  document.getElementById("fbCard").hidden=true;
+}
+function checkGeno(){
+  if(st.answered) return;
+  const m=cur.m; let allOk=true; const items=[];
+  for(const id of cur.targets){
+    const chosen=[...document.querySelectorAll(`.opt[data-id="${id}"][aria-pressed="true"]`)].map(b=>+b.dataset.c).sort();
+    const sol=cur.D[id].slice().sort();
+    const ok=chosen.length===sol.length&&chosen.every((v,i)=>v===sol[i]); allOk=allOk&&ok;
+    document.getElementById("t-"+id).classList.add(ok?"ok":"bad");
+    const r=reason(P[id],m);
+    items.push({ok,id,html:`<b>${ok?"✓":"✗"} ${lab(P[id])}: <span class="gt">${sol.map(c=>gtHTML(m,P[id].sex,c)).join(" oder ")}</span></b>${r.text}`,ids:r.ids});
+  }
+  st.answered=true; score(allOk);
+  const fb=document.getElementById("fbCard"); fb.hidden=false;
+  fb.innerHTML=`<h3>${allOk?"Alles richtig.":"Noch nicht ganz."}</h3><div class="fb">
+   ${items.map((it,i)=>`<div class="fbitem why">${it.html}${it.ids.length?`<br><button class="show" data-i="${i}">Begründung im Stammbaum zeigen</button>`:""}</div>`).join("")}
+   <button class="show" id="allG">Alle Genotypen einblenden</button></div>`;
+  fb.querySelectorAll(".show[data-i]").forEach(b=>b.onclick=()=>draw({targets:cur.targets,highlight:items[+b.dataset.i].ids}));
+  document.getElementById("allG").onclick=()=>draw({targets:cur.targets,geno:{m,D:cur.D}});
+}
+function reason(p,m){
+  const d=MODES[m], D=cur.D, L=lab;
+  const kids=p.kids.map(k=>P[k]), fa=p.father!=null?P[p.father]:null, mo=p.mother!=null?P[p.mother]:null;
+  if(D[p.id].length>1) return {ids:[p.id],text:"Beide Genotypen sind mit allen Angaben im Stammbaum vereinbar. Eine sichere Aussage ist nicht möglich."};
+  if(d.x&&p.sex==="m") return {ids:[],text:"Männer sind hemizygot: Sie haben nur ein X-Chromosom, der Phänotyp zeigt den Genotyp direkt."};
+  if(!d.dom){ // gesunde Anlageträgerin / gesunder Anlageträger
+    const sickKid=kids.find(k=>k.aff), sickPar=[fa,mo].find(x=>x&&x.aff&&(!d.x||x===fa||p.sex==="f"));
+    if(d.x){
+      if(fa&&fa.aff) return {ids:[fa.id,p.id],text:`Gesund, aber ihr kranker Vater ${L(fa)} gibt sein Xᵃ an jede Tochter weiter → Konduktorin.`};
+      const son=kids.find(k=>k.aff&&k.sex==="m"); if(son) return {ids:[p.id,son.id],text:`Ihr kranker Sohn ${L(son)} hat sein Xᵃ von ihr erhalten → Konduktorin.`};
+      const dau=kids.find(k=>k.aff); if(dau) return {ids:[p.id,dau.id],text:`Ihre kranke Tochter ${L(dau)} hat ein Xᵃ von ihr erhalten.`};
+    }else{
+      if(sickKid) return {ids:[p.id,sickKid.id],text:`Gesund, hat aber ein krankes Kind (${L(sickKid)}, aa) und muss daher ein a weitergegeben haben → heterozygot.`};
+      if(sickPar) return {ids:[sickPar.id,p.id],text:`Gesund, aber der kranke Elternteil ${L(sickPar)} (aa) kann nur a weitergeben → heterozygot.`};
+    }
+  }else{
+    if(d.x){
+      if(fa&&!fa.aff) return {ids:[fa.id,p.id],text:`Krank, aber vom gesunden Vater ${L(fa)} stammt ein Xᵃ → heterozygot.`};
+      const hs=kids.find(k=>!k.aff); if(hs) return {ids:[p.id,hs.id],text:`Sie hat ein gesundes Kind (${L(hs)}), das von ihr ein Xᵃ erhalten hat → heterozygot.`};
+    }else{
+      const hp=[fa,mo].find(x=>x&&!x.aff); if(hp) return {ids:[hp.id,p.id],text:`Krank, aber der gesunde Elternteil ${L(hp)} (aa) gibt nur a weiter → heterozygot.`};
+      const hk=kids.find(k=>!k.aff); if(hk) return {ids:[p.id,hk.id],text:`Krank, hat aber ein gesundes Kind (${L(hk)}, aa), dem es ein a vererbt hat → heterozygot.`};
+    }
+  }
+  return {ids:[p.id],text:"Ergibt sich aus Phänotyp und Verwandten im Stammbaum."};
+}
+
+/* ===== Bedienung ===== */
+function newTask(){st.task==="full"?newModeTask(true):st.task==="mode"?newModeTask(false):newGenoTask();}
+function setSeg(a,b,on){a.setAttribute("aria-pressed",on?"true":"false");b.setAttribute("aria-pressed",on?"false":"true");}
+const tabs={full:document.getElementById("tabFull"),mode:document.getElementById("tabMode"),geno:document.getElementById("tabGeno")};
+const g3=document.getElementById("g3"), g4=document.getElementById("g4");
+for(const [k,b] of Object.entries(tabs)) b.onclick=()=>{st.task=k;for(const [k2,b2] of Object.entries(tabs)) b2.setAttribute("aria-pressed",k2===k?"true":"false");newTask();};
+g3.onclick=()=>{st.gens=3;setSeg(g3,g4,true);newTask();};
+g4.onclick=()=>{st.gens=4;setSeg(g3,g4,false);newTask();};
+document.querySelectorAll("#modeChips .chip").forEach(b=>b.onclick=()=>{
+  const k=b.dataset.m;
+  if(st.modes.has(k)){ if(st.modes.size===1) return; st.modes.delete(k);} else st.modes.add(k);
+  b.setAttribute("aria-pressed",st.modes.has(k)?"true":"false"); newTask();
+});
+updScore(); newTask();
+</script>
+
+</body>
+</html>
